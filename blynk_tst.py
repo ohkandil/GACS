@@ -37,35 +37,41 @@ def blynk_disconnected():
     is_connected = False
     logging.warning('Blynk disconnected')
 
-# Add position tracking
-servo1_position = 0  # Track current angle
+# At top of file, add global position tracking
+servo1_position = 0
 servo2_position = 0
+servo1_state = '0'
+servo2_state = '0'
 
 @blynk.VIRTUAL_WRITE(1)
 def v1_write_handler(value):
-    global manual_control_1, servo1_position
-    if value[0] == '1' and servo1_position != 90:  # Only move if not already at 90
+    global manual_control_1, servo1_position, servo1_state
+    if value[0] == '1':
         manual_control_1 = True
         servo1_position = 90
+        servo1_state = '1'
         set_servo_angle(gpio_manager.servo_1, 90)
         gpio_manager.GPIO.output(gpio_manager.GPIO_LED_1, gpio_manager.GPIO.HIGH)
-    elif value[0] == '0' and servo1_position != 0:  # Only move if not already at 0
+    elif value[0] == '0':
         manual_control_1 = False
         servo1_position = 0
+        servo1_state = '0'
         set_servo_angle(gpio_manager.servo_1, 0)
         gpio_manager.GPIO.output(gpio_manager.GPIO_LED_1, gpio_manager.GPIO.LOW)
 
 @blynk.VIRTUAL_WRITE(2)
 def v2_write_handler(value):
-    global manual_control_2, servo2_position
-    if value[0] == '1' and servo2_position != 90:
+    global manual_control_2, servo2_position, servo2_state
+    if value[0] == '1':
         manual_control_2 = True
         servo2_position = 90
+        servo2_state = '1'
         set_servo_angle(gpio_manager.servo_2, 90)
         gpio_manager.GPIO.output(gpio_manager.GPIO_LED_2, gpio_manager.GPIO.HIGH)
-    elif value[0] == '0' and servo2_position != 0:
+    elif value[0] == '0':
         manual_control_2 = False
-        servo2_position = 0
+        servo2_position = 0 
+        servo2_state = '0'
         set_servo_angle(gpio_manager.servo_2, 0)
         gpio_manager.GPIO.output(gpio_manager.GPIO_LED_2, gpio_manager.GPIO.LOW)
 
@@ -73,8 +79,8 @@ def set_servo_angle(servo, angle):
     duty = angle / 18 + 2
     servo.ChangeDutyCycle(duty)
     time.sleep(0.3)
-    servo.ChangeDutyCycle(0)  # Prevents jitter
-
+    servo.ChangeDutyCycle(0)  # Stop PWM but maintain position
+    
 def blynk_thread():
     while True:
         try:
