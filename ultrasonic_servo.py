@@ -1,6 +1,7 @@
 import time
 import zmq
 from gpio_config import gpio_manager
+import blynk_tst
 
 def distance(trigger, echo, num_samples=3):
     distances = []
@@ -38,39 +39,36 @@ def main():
     socket.bind("tcp://*:5555")
 
     try:
-        # Initial servo positions
-        set_servo_angle(gpio_manager.servo_1, 0)
-        set_servo_angle(gpio_manager.servo_2, 0)
-        time.sleep(1)
-
         while True:
-            dist_1 = distance(gpio_manager.GPIO_TRIGGER_1, gpio_manager.GPIO_ECHO_1)
-            if dist_1 <= 10:
-                print(f"Object detected by Sensor 1: {dist_1:.1f} cm")
-                set_servo_angle(gpio_manager.servo_1, 90)
-                gpio_manager.GPIO.output(gpio_manager.GPIO_LED_1, gpio_manager.GPIO.HIGH)
-            else:
-                set_servo_angle(gpio_manager.servo_1, 0)
-                gpio_manager.GPIO.output(gpio_manager.GPIO_LED_1, gpio_manager.GPIO.LOW)
+            # Only control servos if not in manual mode
+            if not blynk_tst.manual_control_1:
+                dist_1 = distance(gpio_manager.GPIO_TRIGGER_1, gpio_manager.GPIO_ECHO_1)
+                if dist_1 <= 10:
+                    print(f"Object detected by Sensor 1: {dist_1:.1f} cm")
+                    set_servo_angle(gpio_manager.servo_1, 90)
+                    gpio_manager.GPIO.output(gpio_manager.GPIO_LED_1, gpio_manager.GPIO.HIGH)
+                else:
+                    set_servo_angle(gpio_manager.servo_1, 0)
+                    gpio_manager.GPIO.output(gpio_manager.GPIO_LED_1, gpio_manager.GPIO.LOW)
 
-            dist_2 = distance(gpio_manager.GPIO_TRIGGER_2, gpio_manager.GPIO_ECHO_2)
-            if dist_2 <= 10:
-                print(f"Object detected by Sensor 2: {dist_2:.1f} cm")
-                set_servo_angle(gpio_manager.servo_2, 90)
-                gpio_manager.GPIO.output(gpio_manager.GPIO_LED_2, gpio_manager.GPIO.HIGH)
-            else:
-                set_servo_angle(gpio_manager.servo_2, 0)
-                gpio_manager.GPIO.output(gpio_manager.GPIO_LED_2, gpio_manager.GPIO.LOW)
+            if not blynk_tst.manual_control_2:
+                dist_2 = distance(gpio_manager.GPIO_TRIGGER_2, gpio_manager.GPIO_ECHO_2)
+                if dist_2 <= 10:
+                    print(f"Object detected by Sensor 2: {dist_2:.1f} cm")
+                    set_servo_angle(gpio_manager.servo_2, 90)
+                    gpio_manager.GPIO.output(gpio_manager.GPIO_LED_2, gpio_manager.GPIO.HIGH)
+                else:
+                    set_servo_angle(gpio_manager.servo_2, 0)
+                    gpio_manager.GPIO.output(gpio_manager.GPIO_LED_2, gpio_manager.GPIO.LOW)
 
-            # Publish sensor data
-            # Publish sensor data
+            # Publish sensor data regardless of control mode
             data = {}
             if dist_1 <= 10:
                 data["sensor_1"] = round(dist_1, 2)
             if dist_2 <= 10:
                 data["sensor_2"] = round(dist_2, 2)
 
-            if data:  # Only send if we have triggered sensors
+            if data:
                 socket.send_json(data)
             time.sleep(0.1)
 
