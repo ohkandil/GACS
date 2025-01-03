@@ -1,114 +1,97 @@
 import time
 import zmq
-import blynklib
+import BlynkLib
+import logging
+import RPi.GPIO as GPIO
 from gpio_config import gpio_manager
+
+# Disable GPIO warnings
+GPIO.setwarnings(False)
+
+# Setup logging
+logging.basicConfig(level=logging.DEBUG)
 
 # Read Blynk auth token
 with open("/home/iot/Documents/blynk_key.txt", "r") as file:
     BLYNK_AUTH = file.readline().strip()
 
-blynk = blynklib.Blynk(BLYNK_AUTH)
+# Initialize Blynk
+BLYNK_SERVER = "blynk.cloud"
+BLYNK_PORT = 80
+blynk = BlynkLib.Blynk(BLYNK_AUTH, server=BLYNK_SERVER, port=BLYNK_PORT, heartbeat=30)
 
-# Virtual Pins for Blynk buttons
-VIRTUAL_PIN_SERVO_1 = 1
-VIRTUAL_PIN_SERVO_2 = 2
-
-# Flags to control manual override
+# Connection status
+is_connected = False
 manual_control_1 = False
 manual_control_2 = False
 
-# Set up ZeroMQ
-context = zmq.Context()
-socket = context.socket(zmq.SUB)
-socket.connect("tcp://localhost:5555")
-socket.subscribe("")
+@blynk.ON("connected")
+def blynk_connected(ping):
+    global is_connected
+    is_connected = True
+    logging.info('Blynk connected with ping: %d ms' % ping)
 
-def distance(trigger, echo, num_samples=3):
-    distances = []
-    for _ in range(num_samples):
-        gpio_manager.GPIO.output(trigger, True)
-        time.sleep(0.00001)
-        gpio_manager.GPIO.output(trigger, False)
+@blynk.ON("disconnected") 
+def blynk_disconnected():
+    global is_connected
+    is_connected = False
+    logging.warning('Blynk disconnected')
 
-        StartTime = time.time()
-        StopTime = time.time()
+# Add position tracking
+servo1_position = 0  # Track current angle
+servo2_position = 0
 
-        while gpio_manager.GPIO.input(echo) == 0:
-            StartTime = time.time()
+@blynk.VIRTUAL_WRITE(1)
+def v1_write_handler(value):
+    global manual_control_1, servo1_position
+    if value[0] == '1' and servo1_position != 90:  # Only move if not already at 90
+        manual_control_1 = True
+        servo1_position = 90
+        set_servo_angle(gpio_manager.servo_1, 90)
+        gpio_manager.GPIO.output(gpio_manager.GPIO_LED_1, gpio_manager.GPIO.HIGH)
+    elif value[0] == '0' and servo1_position != 0:  # Only move if not already at 0
+        manual_control_1 = False
+        servo1_position = 0
+        set_servo_angle(gpio_manager.servo_1, 0)
+        gpio_manager.GPIO.output(gpio_manager.GPIO_LED_1, gpio_manager.GPIO.LOW)
 
-        while gpio_manager.GPIO.input(echo) == 1:
-            StopTime = time.time()
-
-        TimeElapsed = StopTime - StartTime
-        distance = (TimeElapsed * 34300) / 2
-        distances.append(distance)
-        time.sleep(0.005)
-
-    return sum(distances) / len(distances)
+@blynk.VIRTUAL_WRITE(2)
+def v2_write_handler(value):
+    global manual_control_2, servo2_position
+    if value[0] == '1' and servo2_position != 90:
+        manual_control_2 = True
+        servo2_position = 90
+        set_servo_angle(gpio_manager.servo_2, 90)
+        gpio_manager.GPIO.output(gpio_manager.GPIO_LED_2, gpio_manager.GPIO.HIGH)
+    elif value[0] == '0' and servo2_position != 0:
+        manual_control_2 = False
+        servo2_position = 0
+        set_servo_angle(gpio_manager.servo_2, 0)
+        gpio_manager.GPIO.output(gpio_manager.GPIO_LED_2, gpio_manager.GPIO.LOW)
 
 def set_servo_angle(servo, angle):
     duty = angle / 18 + 2
     servo.ChangeDutyCycle(duty)
     time.sleep(0.3)
-    servo.ChangeDutyCycle(0)
-
-@blynk.handle_event(f'write V{VIRTUAL_PIN_SERVO_1}')
-def control_servo_1(pin, value):
-    global manual_control_1
-    try:
-        if int(value[0]) == 1:
-            manual_control_1 = True
-            set_servo_angle(gpio_manager.servo_1, 90)
-            gpio_manager.GPIO.output(gpio_manager.GPIO_LED_1, gpio_manager.GPIO.HIGH)
-            print("Manual control ON for Servo 1")
-        else:
-            manual_control_1 = False
-            set_servo_angle(gpio_manager.servo_1, 0)
-            gpio_manager.GPIO.output(gpio_manager.GPIO_LED_1, gpio_manager.GPIO.LOW)
-            print("Manual control OFF for Servo 1")
-    except Exception as e:
-        print(f"Error in control_servo_1: {e}")
-
-@blynk.handle_event(f'write V{VIRTUAL_PIN_SERVO_2}')
-def control_servo_2(pin, value):
-    global manual_control_2
-    try:
-        if int(value[0]) == 1:
-            manual_control_2 = True
-            set_servo_angle(gpio_manager.servo_2, 90)
-            gpio_manager.GPIO.output(gpio_manager.GPIO_LED_2, gpio_manager.GPIO.HIGH)
-            print("Manual control ON for Servo 2")
-        else:
-            manual_control_2 = False
-            set_servo_angle(gpio_manager.servo_2, 0)
-            gpio_manager.GPIO.output(gpio_manager.GPIO_LED_2, gpio_manager.GPIO.LOW)
-            print("Manual control OFF for Servo 2")
-    except Exception as e:
-        print(f"Error in control_servo_2: {e}")
+    servo.ChangeDutyCycle(0)  # Prevents jitter
 
 def blynk_thread():
-    try:
-        while True:
+    while True:
+        try:
             blynk.run()
-            if not manual_control_1:
-                dist_1 = distance(gpio_manager.GPIO_TRIGGER_1, gpio_manager.GPIO_ECHO_1)
-                if dist_1 <= 10:
-                    set_servo_angle(gpio_manager.servo_1, 90)
-                    gpio_manager.GPIO.output(gpio_manager.GPIO_LED_1, gpio_manager.GPIO.HIGH)
-                else:
-                    set_servo_angle(gpio_manager.servo_1, 0)
-                    gpio_manager.GPIO.output(gpio_manager.GPIO_LED_1, gpio_manager.GPIO.LOW)
-
-            if not manual_control_2:
-                dist_2 = distance(gpio_manager.GPIO_TRIGGER_2, gpio_manager.GPIO_ECHO_2)
-                if dist_2 <= 10:
-                    set_servo_angle(gpio_manager.servo_2, 90)
-                    gpio_manager.GPIO.output(gpio_manager.GPIO_LED_2, gpio_manager.GPIO.HIGH)
-                else:
-                    set_servo_angle(gpio_manager.servo_2, 0)
-                    gpio_manager.GPIO.output(gpio_manager.GPIO_LED_2, gpio_manager.GPIO.LOW)
-
+            if not is_connected:
+                # Run automatic control
+                pass
             time.sleep(0.1)
+        except Exception as e:
+            logging.error(f"Blynk error: {e}")
+            time.sleep(1)  # Wait before retry
 
+if __name__ == "__main__":
+    try:
+        logging.info('Starting Blynk client...')
+        blynk_thread()
     except KeyboardInterrupt:
-        print("Blynk thread stopped by User")
+        logging.info('Stopping Blynk client...')
+    finally:
+        gpio_manager.cleanup()
