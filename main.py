@@ -13,6 +13,21 @@ def signal_handler(sig, frame):
     gpio_manager.cleanup()
     sys.exit(0)
 
+import threading
+import signal
+import sys
+import adafruit_integration as adafruit_integration
+import blynk_tst as blynk_tst
+import email_notifier as email_notifier
+import ultrasonic_servo as ultrasonic_servo
+from gpio_config import gpio_manager
+import time
+
+def signal_handler(sig, frame):
+    print("\nCleaning up...")
+    gpio_manager.cleanup()
+    sys.exit(0)
+
 def main():
     signal.signal(signal.SIGINT, signal_handler)
     
@@ -29,6 +44,14 @@ def main():
     
     for thread in threads:
         thread.start()
+
+    print("All systems initialized and running...")
+
+    while True:
+        time.sleep(1)
+
+if __name__ == "__main__":
+    main()
 
     print("All systems initialized and running...")
 

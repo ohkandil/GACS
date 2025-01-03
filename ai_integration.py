@@ -22,14 +22,34 @@ def get_ai_decision(frequency):
     return decision
 
 def ai_controller():
-    # Example: Frequency of motion events in the past 10 minutes
-    detection_frequency = 10  # Replace with actual calculation
-
-    # Get AI decision
-    decision = get_ai_decision(detection_frequency)
-    if decision == 1:
-        print("AI Decision: Arm the sensor.")
-        arm_motion_sensor()  # Arm the sensor
-    else:
-        print("AI Decision: Disarm the sensor.")
-        arm_motion_sensor()  # Disarm the sensor
+    while True:
+        try:
+            # Read recent data from CSV
+            with open(history_data.HISTORY_FILE, 'r') as file:
+                recent_data = pd.read_csv(file)
+                
+            # Calculate detection frequency in last 10 minutes
+            now = datetime.now()
+            cutoff = now - timedelta(minutes=10)
+            recent_data['timestamp'] = pd.to_datetime(recent_data['timestamp'])
+            recent_events = recent_data[recent_data['timestamp'] > cutoff]
+            
+            # Check each sensor
+            for sensor_id in [1, 2]:
+                sensor_events = len(recent_events[recent_events['sensor_id'] == sensor_id])
+                
+                # Get AI prediction
+                decision = get_ai_decision(sensor_events)
+                
+                # Control servos via Blynk if motion is unexpected
+                if sensor_events > 0 and decision == 0:  # Unexpected motion
+                    if sensor_id == 1:
+                        blynk_tst.v1_write_handler(['1'])
+                    else:
+                        blynk_tst.v2_write_handler(['1'])
+                        
+            time.sleep(5)  # Check every 5 seconds
+            
+        except Exception as e:
+            print(f"Error in AI controller: {e}")
+            time.sleep(1)
