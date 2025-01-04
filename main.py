@@ -8,6 +8,7 @@ import ultrasonic_servo as ultrasonic_servo
 import data_generate as data_generate  # Add this import
 from gpio_config import gpio_manager
 import time
+import ai_integration
 
 def signal_handler(sig, frame):
     print("\nCleaning up...")
@@ -23,7 +24,7 @@ def main():
         threading.Thread(target=blynk_tst.blynk_thread, daemon=True),
         threading.Thread(target=email_notifier.notify_via_email, daemon=True),
         threading.Thread(target=adafruit_integration.main, daemon=True),
-        threading.Thread(target=data_generate.generate_dummy_data, daemon=True)  # Add this line
+        threading.Thread(target=data_generate.generate_dummy_data, daemon=True)
     ]
     
     for thread in threads:
